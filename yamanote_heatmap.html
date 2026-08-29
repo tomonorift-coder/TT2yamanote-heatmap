@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JR山手線 乗車人員ヒートマップ 2024年度</title>
+<style>
+:root{
+  --bg:#2b2d31; --panel:#35373c; --panel2:#3d4046;
+  --jy:#80c241; --jy-dark:#5f9a2c;
+  --plate:#f2f2f0; --ink:#e8e8e6; --ink-dim:#9a9ca2;
+  --ink-sub:#a9abb1;
+  --heat0:#3d7a3f; --heat1:#c9d93b; --heat2:#f5a623; --heat3:#e8442e;
+  --line-dim:#4a4d53;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;
+  font-feature-settings:"palt";
+  display:flex; flex-direction:column; min-height:100vh;
+}
+header{
+  display:flex; align-items:center; gap:14px;
+  padding:16px 22px 12px; border-bottom:1px solid #3f4248;
+}
+.jy-badge{
+  background:var(--jy); color:#fff; font-weight:800;
+  border-radius:8px; width:46px; height:46px; flex:0 0 46px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; letter-spacing:.5px;
+  box-shadow:inset 0 0 0 3px #fff, inset 0 0 0 5px var(--jy);
+}
+h1{font-size:19px; font-weight:800; letter-spacing:.04em;}
+h1 small{display:block; font-size:11px; font-weight:600; color:var(--ink-sub); letter-spacing:.14em; margin-top:2px;}
+.hd-right{margin-left:auto; text-align:right; font-size:11px; color:var(--ink-sub); line-height:1.6;}
+.hd-right b{color:var(--ink); font-weight:700;}
+
+main{flex:1; display:flex; gap:0; min-height:0;}
+#mapwrap{flex:1 1 62%; position:relative; min-width:0;}
+#map{width:100%; height:100%; display:block; cursor:default;}
+aside{
+  flex:0 0 400px; max-width:44%; background:var(--panel);
+  border-left:1px solid #3f4248; display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.panel-scroll{overflow-y:auto; padding:18px 18px 8px; flex:1;}
+
+.step{
+  display:flex; gap:10px; align-items:center; background:var(--panel2);
+  border-radius:10px; padding:10px 12px; margin-bottom:10px;
+  border:1px dashed #55585f;
+}
+.step.done{border-style:solid; border-color:var(--jy);}
+.step .tag{
+  flex:0 0 auto; font-size:10px; font-weight:800; letter-spacing:.1em;
+  color:#fff; background:#55585f; border-radius:5px; padding:4px 8px;
+}
+.step.done .tag{background:var(--jy);}
+.step .stn{font-size:15px; font-weight:800;}
+.step .stn small{font-weight:600; color:var(--ink-sub); margin-left:6px; font-size:11px;}
+.step .hint{font-size:12px; color:var(--ink-sub);}
+
+.dirrow{display:flex; gap:8px; margin:4px 0 14px;}
+.dirbtn{
+  flex:1; background:var(--panel2); color:var(--ink-sub); border:1px solid #4a4d53;
+  border-radius:8px; padding:8px 0; font-size:12.5px; font-weight:700; cursor:pointer;
+  font-family:inherit; transition:all .15s;
+}
+.dirbtn.active{background:var(--jy); border-color:var(--jy); color:#fff;}
+.dirbtn:disabled{opacity:.4; cursor:not-allowed;}
+.resetbtn{
+  background:none; border:1px solid #55585f; color:var(--ink-sub); border-radius:8px;
+  padding:8px 12px; font-size:12px; cursor:pointer; font-family:inherit;
+}
+.resetbtn:hover{color:var(--ink); border-color:var(--ink-sub);}
+
+.summary{
+  background:linear-gradient(135deg,#3a4a33,#35373c 70%);
+  border:1px solid var(--jy-dark); border-radius:12px;
+  padding:14px 16px; margin-bottom:14px;
+}
+.summary .route{font-size:15px; font-weight:800; margin-bottom:10px; letter-spacing:.02em;}
+.summary .route .arrow{color:var(--jy); margin:0 6px;}
+.kpis{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+.kpi{background:#2f3135cc; border-radius:8px; padding:8px 10px;}
+.kpi .v{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.01em;}
+.kpi .v small{font-size:10px; font-weight:600; color:var(--ink-sub); margin-left:2px;}
+.kpi .l{font-size:10px; color:var(--ink-sub); margin-top:2px; letter-spacing:.06em;}
+
+.sec-title{
+  font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--ink-sub);
+  margin:14px 0 8px; display:flex; align-items:center; gap:8px;
+}
+.sec-title::after{content:""; flex:1; height:1px; background:#4a4d53;}
+
+.row{
+  display:grid; grid-template-columns:44px 1fr 74px; gap:8px; align-items:center;
+  padding:6px 6px; border-radius:8px; cursor:pointer;
+}
+.row:hover{background:#3d404677;}
+.row.hl{background:#3d4046;}
+.row .code{
+  font-size:9.5px; font-weight:800; color:#fff; background:var(--jy);
+  border-radius:4px; text-align:center; padding:3px 0; letter-spacing:.05em;
+}
+.row .nm{font-size:12.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.row .nm small{color:var(--ink-sub); font-weight:500; font-size:10px; margin-left:4px;}
+.barwrap{height:9px; background:#2b2d31; border-radius:5px; overflow:hidden; display:flex; margin-top:3px;}
+.bar-np{height:100%;}
+.bar-tk{height:100%; opacity:.45;}
+.row .num{font-size:12px; font-weight:800; text-align:right; font-variant-numeric:tabular-nums;}
+.row .num small{display:block; font-size:9px; color:var(--ink-sub); font-weight:600;}
+
+.legend{margin:10px 0 4px;}
+.legend .grad{height:10px; border-radius:5px;
+  background:linear-gradient(90deg,var(--heat0),var(--heat1),var(--heat2),var(--heat3));}
+.legend .lbls{display:flex; justify-content:space-between; font-size:9.5px; color:var(--ink-sub); margin-top:4px; font-variant-numeric:tabular-nums;}
+.legend-note{font-size:9.5px; color:var(--ink-sub); margin-top:4px;}
+.lg-row{display:flex; gap:14px; font-size:10px; color:var(--ink-sub); margin-top:8px; align-items:center;}
+.sw{display:inline-block; width:16px; height:8px; border-radius:3px; margin-right:4px; vertical-align:middle;}
+
+footer{
+  padding:9px 22px; border-top:1px solid #3f4248; font-size:9.5px; color:#82848a; line-height:1.7;
+}
+footer a{color:#9db877;}
+
+#tooltip{
+  position:absolute; pointer-events:none; z-index:10; display:none;
+  background:#f2f2f0; color:#222; border-radius:9px; padding:9px 12px;
+  box-shadow:0 6px 22px rgba(0,0,0,.45); min-width:172px;
+  font-size:11px; line-height:1.5;
+}
+#tooltip .t-head{display:flex; align-items:center; gap:6px; margin-bottom:4px;}
+#tooltip .t-code{font-size:9px; font-weight:800; color:#fff; background:var(--jy); border-radius:3px; padding:2px 5px;}
+#tooltip .t-name{font-weight:800; font-size:13px;}
+#tooltip .t-grid{display:grid; grid-template-columns:auto 1fr; gap:1px 10px; font-variant-numeric:tabular-nums;}
+#tooltip .t-grid b{text-align:right; font-weight:800;}
+#tooltip .t-note{margin-top:4px; color:#777; font-size:9.5px;}
+
+/* SVG */
+.stn-dot{cursor:pointer; transition:opacity .2s;}
+.stn-label{fill:var(--ink); font-size:11.5px; font-weight:700; paint-order:stroke; stroke:#2b2d31; stroke-width:3px; pointer-events:none;}
+.stn-label.en{font-size:7.5px; font-weight:500; fill:var(--ink-sub);}
+.dim{opacity:.22;}
+.seg-glow{filter:url(#glow);}
+@media (max-width:900px){
+  main{flex-direction:column;}
+  #mapwrap{flex:0 0 58vh;}
+  aside{flex:1; max-width:none; border-left:none; border-top:1px solid #3f4248;}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important;} }
+</style>
+</head>
+<body>
+<header>
+  <div class="jy-badge">JY</div>
+  <h1>JR山手線 乗車人員ヒートマップ<small>YAMANOTE LINE RIDERSHIP HEATMAP — FY2024</small></h1>
+  <div class="hd-right">出典：JR東日本 各駅の乗車人員 2024年度<br><b>1日平均・乗車人員のみ</b>（降車は含まず）</div>
+</header>
+<main>
+  <div id="mapwrap">
+    <svg id="map" viewBox="0 0 1080 1140" role="img" aria-label="山手線路線図ヒートマップ"></svg>
+    <div id="tooltip"></div>
+  </div>
+  <aside>
+    <div class="panel-scroll">
+      <div class="step" id="stepA"><span class="tag">乗車駅</span><span class="hint">地図上の駅をクリックして選択</span></div>
+      <div class="step" id="stepB"><span class="tag">降車駅</span><span class="hint">2駅目をクリックして選択</span></div>
+      <div class="dirrow">
+        <button class="dirbtn" id="btnOuter" disabled>外回り</button>
+        <button class="dirbtn" id="btnInner" disabled>内回り</button>
+        <button class="resetbtn" id="btnReset">リセット</button>
+      </div>
+      <div id="summaryBox"></div>
+      <div class="sec-title" id="listTitle">全駅 乗車人員ランキング</div>
+      <div id="list"></div>
+      <div class="sec-title">凡例</div>
+      <div class="legend">
+        <div class="grad"></div>
+        <div class="lbls"><span id="lgMin"></span><span>（対数スケール）</span><span id="lgMax"></span></div>
+        <div class="legend-note">円の大きさ＝乗車人員（面積比例）／ 色＝ヒート（対数スケール：最大と最小の差が約47倍のため）</div>
+        <div class="lg-row">
+          <span><span class="sw" style="background:var(--jy)"></span>定期外</span>
+          <span><span class="sw" style="background:var(--jy); opacity:.45"></span>定期</span>
+        </div>
+      </div>
+    </div>
+    <footer>
+      駅間OD流動（乗車駅→降車駅の実流動量）はJR東日本非公開のため、本アプリは<b>区間内各駅の乗車人員</b>を可視化しています。区間合計は「その区間の各駅で乗車する人数の総和」であり、実際にA駅からB駅まで乗り通す人数ではありません。<br>
+      データ：JR東日本「各駅の乗車人員 2024年度」（ベスト100 および 101位以下：鶯谷・田端・目白・高輪ゲートウェイ）／ 駅座標は概算値。オフライン動作・単一ファイル。
+    </footer>
+  </aside>
+</main>
+<script>
+const DATA = {"meta": {"title": "JR山手線 駅別乗車人員ヒートマップ用データ", "fiscal_year": "2024年度（1日平均乗車人員）", "unit": "人/日", "notes": ["乗車人員のみ（降車人員は含まない）。JR東日本公表値。", "駅間OD（乗車駅→降車駅の流動量）は非公開のため、本データは駅単位の乗車人員。", "座標は地理座標の概算値（±100m程度）を正距円筒投影で0-1000に正規化。"], "sources": ["JR東日本 各駅の乗車人員2024年度 ベスト100 https://www.jreast.co.jp/company/data/passenger/", "同 101位以下（鶯谷・田端・目白・高輪ゲートウェイ） https://www.jreast.co.jp/company/data/passenger/2024_01.html ほか"], "stats": {"min_total": 14209, "max_total": 666809, "min_station": "高輪ゲートウェイ", "max_station": "新宿", "loop_total": 4678319}, "line": {"line_code": "JY", "stations": 30, "length_km": 34.5, "loop_minutes": 60, "outer_direction": "外回り＝JY01→JY02→…→JY30→JY01（時計回り）"}}, "stations": [{"index": 0, "code": "JY01", "name_ja": "東京", "name_en": "Tokyo", "riders_non_commuter": 245908, "riders_commuter": 188655, "riders_total": 434564, "heat_linear": 0.6441, "heat_log": 0.8887, "lat": 35.6812, "lon": 139.7671, "x": 456.9, "y": 480.6, "source": "best100"}, {"index": 1, "code": "JY02", "name_ja": "神田", "name_en": "Kanda", "riders_non_commuter": 41353, "riders_commuter": 49174, "riders_total": 90528, "heat_linear": 0.1169, "heat_log": 0.4812, "lat": 35.6918, "lon": 139.7709, "x": 483.0, "y": 391.0, "source": "best100"}, {"index": 2, "code": "JY03", "name_ja": "秋葉原", "name_en": "Akihabara", "riders_non_commuter": 127226, "riders_commuter": 94194, "riders_total": 221421, "heat_linear": 0.3175, "heat_log": 0.7136, "lat": 35.6984, "lon": 139.7731, "x": 498.1, "y": 335.3, "source": "best100"}, {"index": 3, "code": "JY04", "name_ja": "御徒町", "name_en": "Okachimachi", "riders_non_commuter": 32403, "riders_commuter": 30581, "riders_total": 62984, "heat_linear": 0.0747, "heat_log": 0.3869, "lat": 35.7075, "lon": 139.7747, "x": 509.1, "y": 258.4, "source": "best100"}, {"index": 4, "code": "JY05", "name_ja": "上野", "name_en": "Ueno", "riders_non_commuter": 100106, "riders_commuter": 69935, "riders_total": 170042, "heat_linear": 0.2388, "heat_log": 0.6449, "lat": 35.7141, "lon": 139.7774, "x": 527.6, "y": 202.7, "source": "best100"}, {"index": 5, "code": "JY06", "name_ja": "鶯谷", "name_en": "Uguisudani", "riders_non_commuter": 14507, "riders_commuter": 9952, "riders_total": 24460, "heat_linear": 0.0157, "heat_log": 0.1411, "lat": 35.7208, "lon": 139.7786, "x": 535.8, "y": 146.1, "source": "101below"}, {"index": 6, "code": "JY07", "name_ja": "日暮里", "name_en": "Nippori", "riders_non_commuter": 51756, "riders_commuter": 55321, "riders_total": 107077, "heat_linear": 0.1423, "heat_log": 0.5248, "lat": 35.7278, "lon": 139.7708, "x": 482.3, "y": 87.0, "source": "best100"}, {"index": 7, "code": "JY08", "name_ja": "西日暮里", "name_en": "Nishi-Nippori", "riders_non_commuter": 37672, "riders_commuter": 51934, "riders_total": 89606, "heat_linear": 0.1155, "heat_log": 0.4785, "lat": 35.7324, "lon": 139.7669, "x": 455.5, "y": 48.1, "source": "best100"}, {"index": 8, "code": "JY09", "name_ja": "田端", "name_en": "Tabata", "riders_non_commuter": 18173, "riders_commuter": 22306, "riders_total": 40479, "heat_linear": 0.0403, "heat_log": 0.272, "lat": 35.7381, "lon": 139.7608, "x": 413.7, "y": 0.0, "source": "101below"}, {"index": 9, "code": "JY10", "name_ja": "駒込", "name_en": "Komagome", "riders_non_commuter": 19227, "riders_commuter": 24312, "riders_total": 43540, "heat_linear": 0.0449, "heat_log": 0.291, "lat": 35.7365, "lon": 139.746, "x": 312.2, "y": 13.5, "source": "best100"}, {"index": 10, "code": "JY11", "name_ja": "巣鴨", "name_en": "Sugamo", "riders_non_commuter": 28727, "riders_commuter": 38433, "riders_total": 67160, "heat_linear": 0.0811, "heat_log": 0.4036, "lat": 35.7335, "lon": 139.7394, "x": 266.9, "y": 38.9, "source": "best100"}, {"index": 11, "code": "JY12", "name_ja": "大塚", "name_en": "Otsuka", "riders_non_commuter": 26718, "riders_commuter": 27633, "riders_total": 54351, "heat_linear": 0.0615, "heat_log": 0.3486, "lat": 35.7311, "lon": 139.7282, "x": 190.0, "y": 59.1, "source": "best100"}, {"index": 12, "code": "JY13", "name_ja": "池袋", "name_en": "Ikebukuro", "riders_non_commuter": 229134, "riders_commuter": 269994, "riders_total": 499128, "heat_linear": 0.7431, "heat_log": 0.9247, "lat": 35.7295, "lon": 139.7109, "x": 71.4, "y": 72.6, "source": "best100"}, {"index": 13, "code": "JY14", "name_ja": "目白", "name_en": "Mejiro", "riders_non_commuter": 12978, "riders_commuter": 20562, "riders_total": 33541, "heat_linear": 0.0296, "heat_log": 0.2232, "lat": 35.7212, "lon": 139.7064, "x": 40.5, "y": 142.7, "source": "101below"}, {"index": 14, "code": "JY15", "name_ja": "高田馬場", "name_en": "Takadanobaba", "riders_non_commuter": 76972, "riders_commuter": 102693, "riders_total": 179666, "heat_linear": 0.2535, "heat_log": 0.6593, "lat": 35.7126, "lon": 139.7038, "x": 22.6, "y": 215.4, "source": "best100"}, {"index": 15, "code": "JY16", "name_ja": "新大久保", "name_en": "Shin-Okubo", "riders_non_commuter": 32485, "riders_commuter": 16760, "riders_total": 49246, "heat_linear": 0.0537, "heat_log": 0.323, "lat": 35.7013, "lon": 139.7005, "x": 0.0, "y": 310.8, "source": "best100"}, {"index": 16, "code": "JY17", "name_ja": "新宿", "name_en": "Shinjuku", "riders_non_commuter": 336631, "riders_commuter": 330178, "riders_total": 666809, "heat_linear": 1.0, "heat_log": 1.0, "lat": 35.6896, "lon": 139.7006, "x": 0.7, "y": 409.6, "source": "best100"}, {"index": 17, "code": "JY18", "name_ja": "代々木", "name_en": "Yoyogi", "riders_non_commuter": 30901, "riders_commuter": 25681, "riders_total": 56582, "heat_linear": 0.0649, "heat_log": 0.359, "lat": 35.683, "lon": 139.7022, "x": 11.7, "y": 465.4, "source": "best100"}, {"index": 18, "code": "JY19", "name_ja": "原宿", "name_en": "Harajuku", "riders_non_commuter": 49265, "riders_commuter": 18141, "riders_total": 67407, "heat_linear": 0.0815, "heat_log": 0.4045, "lat": 35.6702, "lon": 139.7027, "x": 15.1, "y": 573.5, "source": "best100"}, {"index": 19, "code": "JY20", "name_ja": "渋谷", "name_en": "Shibuya", "riders_non_commuter": 173860, "riders_commuter": 150553, "riders_total": 324414, "heat_linear": 0.4753, "heat_log": 0.8128, "lat": 35.658, "lon": 139.7016, "x": 7.5, "y": 676.5, "source": "best100"}, {"index": 20, "code": "JY21", "name_ja": "恵比寿", "name_en": "Ebisu", "riders_non_commuter": 66315, "riders_commuter": 59695, "riders_total": 126010, "heat_linear": 0.1713, "heat_log": 0.5671, "lat": 35.6467, "lon": 139.7101, "x": 65.9, "y": 772.0, "source": "best100"}, {"index": 21, "code": "JY22", "name_ja": "目黒", "name_en": "Meguro", "riders_non_commuter": 46134, "riders_commuter": 47249, "riders_total": 93384, "heat_linear": 0.1213, "heat_log": 0.4892, "lat": 35.634, "lon": 139.7157, "x": 104.3, "y": 879.2, "source": "best100"}, {"index": 22, "code": "JY23", "name_ja": "五反田", "name_en": "Gotanda", "riders_non_commuter": 50264, "riders_commuter": 60057, "riders_total": 110321, "heat_linear": 0.1473, "heat_log": 0.5325, "lat": 35.6264, "lon": 139.7238, "x": 159.9, "y": 943.4, "source": "best100"}, {"index": 23, "code": "JY24", "name_ja": "大崎", "name_en": "Osaki", "riders_non_commuter": 60247, "riders_commuter": 84946, "riders_total": 145194, "heat_linear": 0.2007, "heat_log": 0.6039, "lat": 35.6197, "lon": 139.7286, "x": 192.8, "y": 1000.0, "source": "best100"}, {"index": 24, "code": "JY25", "name_ja": "品川", "name_en": "Shinagawa", "riders_non_commuter": 148317, "riders_commuter": 139622, "riders_total": 287939, "heat_linear": 0.4194, "heat_log": 0.7818, "lat": 35.6285, "lon": 139.7387, "x": 262.1, "y": 925.7, "source": "best100"}, {"index": 25, "code": "JY26", "name_ja": "高輪ゲートウェイ", "name_en": "Takanawa Gateway", "riders_non_commuter": 4917, "riders_commuter": 9291, "riders_total": 14209, "heat_linear": 0.0, "heat_log": 0.0, "lat": 35.6355, "lon": 139.7407, "x": 275.8, "y": 866.6, "source": "101below"}, {"index": 26, "code": "JY27", "name_ja": "田町", "name_en": "Tamachi", "riders_non_commuter": 44942, "riders_commuter": 80913, "riders_total": 125855, "heat_linear": 0.1711, "heat_log": 0.5668, "lat": 35.6457, "lon": 139.7476, "x": 323.1, "y": 780.4, "source": "best100"}, {"index": 27, "code": "JY28", "name_ja": "浜松町", "name_en": "Hamamatsucho", "riders_non_commuter": 57611, "riders_commuter": 76291, "riders_total": 133902, "heat_linear": 0.1834, "heat_log": 0.5829, "lat": 35.6553, "lon": 139.7571, "x": 388.3, "y": 699.3, "source": "best100"}, {"index": 28, "code": "JY29", "name_ja": "新橋", "name_en": "Shimbashi", "riders_non_commuter": 102055, "riders_commuter": 129573, "riders_total": 231628, "heat_linear": 0.3332, "heat_log": 0.7253, "lat": 35.6662, "lon": 139.7583, "x": 396.5, "y": 607.3, "source": "best100"}, {"index": 29, "code": "JY30", "name_ja": "有楽町", "name_en": "Yurakucho", "riders_non_commuter": 62576, "riders_commuter": 64296, "riders_total": 126872, "heat_linear": 0.1726, "heat_log": 0.5689, "lat": 35.6749, "lon": 139.7628, "x": 427.4, "y": 533.8, "source": "best100"}]};
+const S = DATA.stations, N = S.length;
+const fmt = n => n.toLocaleString("ja-JP");
+
+/* ---------- geometry ---------- */
+const PAD = 90, W = 1080, H = 1140;
+const xs = S.map(s=>s.x), ys = S.map(s=>s.y);
+const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+const sc = Math.min((W-2*PAD-140)/(maxx-minx), (H-2*PAD)/(maxy-miny));
+S.forEach(s=>{ s.px = PAD+40+(s.x-minx)*sc; s.py = PAD+(s.y-miny)*sc; });
+const cx = S.reduce((a,s)=>a+s.px,0)/N, cy = S.reduce((a,s)=>a+s.py,0)/N;
+
+/* ---------- heat color ---------- */
+const stops = [[0x3d,0x7a,0x3f],[0xc9,0xd9,0x3b],[0xf5,0xa6,0x23],[0xe8,0x44,0x2e]];
+function heatColor(t){
+  t = Math.max(0,Math.min(1,t)) * (stops.length-1);
+  const i = Math.min(Math.floor(t), stops.length-2), f = t-i;
+  const c = stops[i].map((v,k)=>Math.round(v+(stops[i+1][k]-v)*f));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+const rOf = s => 6 + Math.sqrt(s.riders_total)/Math.sqrt(DATA.meta.stats.max_total)*22;
+
+/* ---------- state ---------- */
+let selA=null, selB=null, dir="auto"; // dir: "outer" | "inner" | "auto"
+function pathStations(a,b,d){
+  // index ascending (JY01→JY02→…) = 内回り（東京→上野・池袋方面）/ descending = 外回り
+  const out=[]; if(a==null||b==null) return out;
+  if(d==="inner"){ for(let i=a;;i=(i+1)%N){ out.push(i); if(i===b)break; } }
+  else{ for(let i=a;;i=(i-1+N)%N){ out.push(i); if(i===b)break; } }
+  return out;
+}
+function autoDir(a,b){
+  const inn=((b-a)+N)%N, out=((a-b)+N)%N;
+  return out<=inn ? "outer":"inner";
+}
+
+/* ---------- build svg ---------- */
+const svg = document.getElementById("map");
+const NS = "http://www.w3.org/2000/svg";
+function el(tag,attrs,parent){
+  const e=document.createElementNS(NS,tag);
+  for(const k in attrs) e.setAttribute(k,attrs[k]);
+  (parent||svg).appendChild(e); return e;
+}
+// defs: glow filter
+const defs = el("defs",{});
+const flt = el("filter",{id:"glow", x:"-60%", y:"-60%", width:"220%", height:"220%"},defs);
+el("feGaussianBlur",{stdDeviation:"7", result:"b"},flt);
+const mrg = el("feMerge",{},flt);
+el("feMergeNode",{"in":"b"},mrg); el("feMergeNode",{"in":"SourceGraphic"},mrg);
+
+const gBase = el("g",{}),  gHeatGlow = el("g",{class:"seg-glow"}), gHeat = el("g",{}),
+      gDots = el("g",{}), gLabels = el("g",{});
+
+// base loop
+let dPath="";
+for(let i=0;i<=N;i++){ const s=S[i%N]; dPath += (i? " L":"M")+s.px+" "+s.py; }
+const baseLine = el("path",{d:dPath+" Z", fill:"none", stroke:"var(--line-dim)", "stroke-width":10, "stroke-linejoin":"round", "stroke-linecap":"round"},gBase);
+const baseLineIn = el("path",{d:dPath+" Z", fill:"none", stroke:"#5f9a2c", "stroke-width":4, "stroke-linejoin":"round", "stroke-dasharray":"1 9", "stroke-linecap":"round", opacity:.7},gBase);
+
+// 内回り/外回り 表示（中央）
+const ctr = el("g",{});
+el("text",{x:cx, y:cy-16, "text-anchor":"middle", fill:"#7c7f86","font-size":13,"font-weight":700},ctr).textContent="外回り＝時計回り／内回り＝反時計回り";
+el("text",{x:cx, y:cy+8, "text-anchor":"middle", fill:"#63666d","font-size":11},ctr).textContent="駅を2つ選ぶと区間ヒートを表示";
+
+// station nodes
+const dotEls=[], edgeEls=[];
+S.forEach((s,i)=>{
+  const ang = Math.atan2(s.py-cy, s.px-cx);
+  const lr = rOf(s)+10;
+  const lx = s.px+Math.cos(ang)*lr, ly = s.py+Math.sin(ang)*lr;
+  const anchor = Math.cos(ang)>0.35 ? "start" : (Math.cos(ang)<-0.35 ? "end":"middle");
+  const dy = Math.sin(ang)>0.5? 12 : (Math.sin(ang)<-0.5? -4 : 4);
+
+  const g = el("g",{class:"stn-dot","data-i":i},gDots);
+  const halo = el("circle",{cx:s.px, cy:s.py, r:rOf(s)+5, fill:"none", stroke:"none","stroke-width":3},g);
+  const c = el("circle",{cx:s.px, cy:s.py, r:rOf(s), fill:heatColor(s.heat_log), stroke:"#fff","stroke-width":2.2},g);
+  s._halo=halo; s._circle=c; s._g=g;
+  const t1 = el("text",{x:lx, y:ly+dy, "text-anchor":anchor, class:"stn-label"},gLabels);
+  t1.textContent = s.name_ja;
+  const t2 = el("text",{x:lx, y:ly+dy+11, "text-anchor":anchor, class:"stn-label en"},gLabels);
+  t2.textContent = s.code+" · "+s.name_en;
+  s._labels=[t1,t2];
+  g.addEventListener("click",()=>clickStation(i));
+  g.addEventListener("mousemove",e=>showTip(e,s));
+  g.addEventListener("mouseleave",hideTip);
+  dotEls.push(g);
+});
+
+/* ---------- tooltip ---------- */
+const tip = document.getElementById("tooltip");
+function showTip(e,s){
+  tip.style.display="block";
+  const wrap = document.getElementById("mapwrap").getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX-wrap.left+16, wrap.width-200)+"px";
+  tip.style.top  = (e.clientY-wrap.top+14)+"px";
+  tip.innerHTML = `<div class="t-head"><span class="t-code">${s.code}</span><span class="t-name">${s.name_ja}</span><span style="color:#888;font-size:9px">${s.name_en}</span></div>
+  <div class="t-grid">
+    <span>合計</span><b>${fmt(s.riders_total)} 人/日</b>
+    <span>定期外</span><b>${fmt(s.riders_non_commuter)}</b>
+    <span>定期</span><b>${fmt(s.riders_commuter)}</b>
+    <span>山手線内順位</span><b>${rankOf(s.index)} / 30 位</b>
+  </div><div class="t-note">クリックで${selA==null?"乗車駅":selB==null&&s.index!==selA?"降車駅":"選び直し"}に設定</div>`;
+}
+function hideTip(){ tip.style.display="none"; }
+const rankSorted = [...S].sort((a,b)=>b.riders_total-a.riders_total).map(s=>s.index);
+function rankOf(i){ return rankSorted.indexOf(i)+1; }
+
+/* ---------- selection ---------- */
+function clickStation(i){
+  if(selA==null){ selA=i; }
+  else if(selB==null && i!==selA){ selB=i; dir=autoDir(selA,selB); }
+  else { selA=i; selB=null; dir="auto"; }
+  render();
+}
+document.getElementById("btnOuter").onclick=()=>{dir="outer";render();};
+document.getElementById("btnInner").onclick=()=>{dir="inner";render();};
+document.getElementById("btnReset").onclick=()=>{selA=selB=null;dir="auto";render();};
+
+/* ---------- render ---------- */
+function stepHTML(elId, s, label){
+  const box=document.getElementById(elId);
+  if(s==null){ box.className="step"; box.innerHTML=`<span class="tag">${label}</span><span class="hint">${label==="乗車駅"?"地図上の駅をクリックして選択":"2駅目をクリックして選択"}</span>`; }
+  else{ box.className="step done"; box.innerHTML=`<span class="tag">${label}</span><span class="stn">${S[s].name_ja}<small>${S[s].code} ${S[s].name_en}</small></span>`; }
+}
+function render(){
+  stepHTML("stepA",selA,"乗車駅"); stepHTML("stepB",selB,"降車駅");
+  const hasSeg = selA!=null && selB!=null;
+  const d = hasSeg ? (dir==="auto"?autoDir(selA,selB):dir) : null;
+  document.getElementById("btnOuter").disabled = !hasSeg;
+  document.getElementById("btnInner").disabled = !hasSeg;
+  document.getElementById("btnOuter").className = "dirbtn"+(hasSeg&&d==="outer"?" active":"");
+  document.getElementById("btnInner").className = "dirbtn"+(hasSeg&&d==="inner"?" active":"");
+
+  gHeat.innerHTML=""; gHeatGlow.innerHTML="";
+  const seg = hasSeg ? pathStations(selA,selB,d) : [];
+  const inSeg = new Set(seg);
+
+  S.forEach((s,i)=>{
+    const active = !hasSeg || inSeg.has(i);
+    s._g.classList.toggle("dim", !active);
+    s._labels.forEach(t=>t.classList.toggle("dim", !active));
+    s._halo.setAttribute("stroke", i===selA||i===selB ? "#fff":"none");
+    s._circle.setAttribute("r", active? rOf(s): rOf(s)*0.75);
+  });
+  baseLine.setAttribute("opacity", hasSeg? .35:1);
+  baseLineIn.setAttribute("opacity", hasSeg? .2:.7);
+
+  if(hasSeg){
+    for(let k=0;k<seg.length-1;k++){
+      const a=S[seg[k]], b=S[seg[k+1]];
+      const col = heatColor((a.heat_log+b.heat_log)/2);
+      el("line",{x1:a.px,y1:a.py,x2:b.px,y2:b.py, stroke:col,"stroke-width":16,"stroke-linecap":"round",opacity:.55},gHeatGlow);
+      el("line",{x1:a.px,y1:a.py,x2:b.px,y2:b.py, stroke:col,"stroke-width":9,"stroke-linecap":"round"},gHeat);
+    }
+    seg.forEach(i=>{
+      const s=S[i];
+      el("circle",{cx:s.px,cy:s.py,r:rOf(s)+7,fill:heatColor(s.heat_log),opacity:.28},gHeatGlow);
+    });
+  }
+  renderPanel(seg,d);
+}
+function renderPanel(seg,d){
+  const box=document.getElementById("summaryBox");
+  const list=document.getElementById("list");
+  const items = seg.length? seg.map(i=>S[i]) : [...S].sort((a,b)=>b.riders_total-a.riders_total);
+  document.getElementById("listTitle").textContent = seg.length? `区間内の駅（${d==="outer"?"外回り":"内回り"}順）` : "全駅 乗車人員ランキング";
+
+  if(seg.length){
+    const total = items.reduce((a,s)=>a+s.riders_total,0);
+    const stns = seg.length, edges = seg.length-1, minutes = edges*2;
+    box.innerHTML = `<div class="summary">
+      <div class="route">${S[selA].name_ja}<span class="arrow">${d==="outer"?"⟶ 外回り ⟶":"⟵ 内回り ⟵"}</span>${S[selB].name_ja}</div>
+      <div class="kpis">
+        <div class="kpi"><div class="v">${stns}<small>駅</small></div><div class="l">通過駅数（両端含む）</div></div>
+        <div class="kpi"><div class="v">約${minutes}<small>分</small></div><div class="l">所要時間目安（2分/駅間）</div></div>
+        <div class="kpi"><div class="v">${(total/10000).toFixed(1)}<small>万人/日</small></div><div class="l">区間内 乗車人員合計</div></div>
+      </div></div>`;
+  } else box.innerHTML="";
+
+  const maxT = DATA.meta.stats.max_total;
+  list.innerHTML = items.map(s=>{
+    const wNp = s.riders_non_commuter/maxT*100, wTk = s.riders_commuter/maxT*100;
+    const col = heatColor(s.heat_log);
+    return `<div class="row" data-i="${s.index}">
+      <span class="code">${s.code}</span>
+      <span><span class="nm">${s.name_ja}<small>${s.name_en}</small></span>
+        <span class="barwrap"><span class="bar-np" style="width:${wNp}%;background:${col}"></span><span class="bar-tk" style="width:${wTk}%;background:${col}"></span></span></span>
+      <span class="num">${fmt(s.riders_total)}<small>${rankOf(s.index)}位</small></span>
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".row").forEach(r=>{
+    r.addEventListener("click",()=>clickStation(+r.dataset.i));
+    r.addEventListener("mouseenter",()=>{ const s=S[+r.dataset.i]; s._circle.setAttribute("stroke-width",4); r.classList.add("hl"); });
+    r.addEventListener("mouseleave",()=>{ const s=S[+r.dataset.i]; s._circle.setAttribute("stroke-width",2.2); r.classList.remove("hl"); });
+  });
+}
+document.getElementById("lgMin").textContent = fmt(DATA.meta.stats.min_total)+"人 ("+DATA.meta.stats.min_station+")";
+document.getElementById("lgMax").textContent = fmt(DATA.meta.stats.max_total)+"人 ("+DATA.meta.stats.max_station+")";
+render();
+</script>
+</body>
+</html>
